@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "kolo-face"
+version = "0.1.0"
+description = "Додаток, який дозволяє виводити зображення з камери в коло на вашому екрані"
+authors = ["Blackgolyb <andrejomelnickij@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pyqt5 = "^5.15.9"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
