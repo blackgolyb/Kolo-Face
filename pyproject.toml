@@ -8,6 +8,7 @@ packages = [
     { include = "scripts" },
     # { include = "widgets", from = "src" },
     { include = "ui", from = "src" },
+    { include = "services", from = "src" },
 ]
 
 [tool.poetry.dependencies]
