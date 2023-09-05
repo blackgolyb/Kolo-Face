@@ -4,11 +4,24 @@ version = "0.1.0"
 description = "Додаток, який дозволяє виводити зображення з камери в коло на вашому екрані"
 authors = ["Blackgolyb <andrejomelnickij@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "scripts" },
+    # { include = "widgets", from = "src" },
+    { include = "ui", from = "src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
 pyqt5 = "^5.15.9"
 
+[tool.poetry.scripts]
+convert-ui = "scripts.convert_ui:convert_ui_file_to_python"
+blackify = "scripts.blackify:blackify"
+start = "src.main:main"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.7.0"
 
 [build-system]
 requires = ["poetry-core"]
