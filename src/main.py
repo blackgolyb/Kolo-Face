@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import QWidget
 
 import config
+from services.singleton import SingletonMeta
 import ui.settings_control_panel as settings_control_panel_ui
 
 
@@ -76,8 +77,11 @@ class SettingsWindow(QWidget):
         super().__init__()
         self.settings_panel = SettingsPanelWidget(self)
         self.layout = QVBoxLayout(self)
-        # self.
+        self.camera = LabelCamera(camera_id=0, size=None, parent=self)
+        self.layout.addWidget(self.camera)
         self.layout.addWidget(self.settings_panel)
+
+        self.camera.start_camera()
 
 
 class SystemTrayIcon(QSystemTrayIcon):
@@ -90,40 +94,95 @@ class SystemTrayIcon(QSystemTrayIcon):
         self.setContextMenu(menu)
 
 
-class LabelCamera(QWidget):
-    def __init__(self, camera_id=0, size=(100, 100), parent=None):
-        super().__init__(parent)
+class Camera(metaclass=SingletonMeta):
+    def __init__(self, camera_id=0):
+        self.sources = {}
 
-        self.size = size
-        self.layout = QVBoxLayout(self)
+        self.viewfinder = QCameraViewfinder()
+        self.probe = None
 
+        self.change_camera_id(camera_id)
+
+    def get_size_or_camera_size(self):
+        size = self.viewfinder.size()
+        return (size.width(), size.height())
+
+    def __init_camera(self):
+        self.camera = QCamera(self.available_cameras[self.camera_id])
+        self.camera.setCaptureMode(QCamera.CaptureViewfinder)
+        self.camera.setViewfinder(self.viewfinder)
+
+        if self.probe is not None:
+            self.probe.videoFrameProbed.disconnect(self.process_frame)
+
+        self.probe = QtMultimedia.QVideoProbe(self.camera)
+        self.probe.videoFrameProbed.connect(self.process_frame)
+        self.probe.setSource(self.camera)
+
+    def add_source(self, source, func=None, size=None):
+        self.sources[source] = [func or self.process_pixmap, size]
+
+    def process_pixmap(self, image, size):
+        pixmap = QPixmap.fromImage(image)
+        if size is not None:
+            pixmap = pixmap.scaled(*size)
+        return pixmap
+
+    def process_sources(self, frame):
+        for source, (process_pixmap, size) in self.sources.items():
+            if size is None:
+                size = frame.image().size()
+                size = (size.width(), size.height())
+
+            pixmap = process_pixmap(frame.image(), size)
+            source.setPixmap(pixmap)
+
+    def process_frame(self, frame):
+        QApplication.processEvents()
+        if frame.isValid():
+            self.process_sources(frame)
+
+    def change_camera_id(self, camera_id: int):
+        self.camera_id = camera_id
         self.available_cameras = QCameraInfo.availableCameras()
         if not self.available_cameras:
             print("No camera found.")
             sys.exit()
 
-        self.camera = QCamera(self.available_cameras[camera_id])
-        self.camera.setCaptureMode(QCamera.CaptureViewfinder)
-        self.viewfinder = QCameraViewfinder()
+        self.__init_camera()
 
-        self.probe = QtMultimedia.QVideoProbe(self)
-        self.probe.videoFrameProbed.connect(self.process_frame)
-        self.probe.setSource(self.camera)
+    def start(self):
+        self.camera.start()
 
+    def stop(self):
+        self.camera.stop()
+
+    def __del__(self):
+        if self.probe.isActive():
+            self.probe.videoFrameProbed.disconnect(self.process_frame)
+            self.probe.deleteLater()
+        self.camera.stop()
+
+
+class LabelCamera(QWidget):
+    def __init__(self, camera_id=0, size=(100, 100), parent=None):
+        QWidget.__init__(self, parent)
+        self.layout = QVBoxLayout(self)
         self.camera_label = QLabel()
-        self.camera_label.resize(*self.size)
+        self.size = size
+        self.camera = Camera(camera_id)
+        self.set_process_pixmap(None)
+        # self.__init_camera()
+        self.resize_camera_label()
 
-        self.camera.setViewfinder(self.viewfinder)
         self.layout.addWidget(self.camera_label)
+        # self.start_camera()
 
-    def process_pixmap(self, image, size):
-        return mask_image(image, size[0])
-
-    def process_frame(self, frame):
-        QApplication.processEvents()
-        if frame.isValid():
-            pixmap = self.process_pixmap(frame.image(), self.size)
-            self.camera_label.setPixmap(pixmap)
+    def resize_camera_label(self):
+        size = self.size
+        if size is None:
+            size = self.camera.get_size_or_camera_size()
+        self.camera_label.resize(*size)
 
     def start_camera(self):
         self.camera.start()
@@ -131,12 +190,8 @@ class LabelCamera(QWidget):
     def stop_camera(self):
         self.camera.stop()
 
-    def closeEvent(self, event):
-        if self.probe.isActive():
-            self.probe.videoFrameProbed.disconnect(self.process_frame)
-            self.probe.deleteLater()
-        self.camera.stop()
-        event.accept()
+    def set_process_pixmap(self, func):
+        self.camera.add_source(self.camera_label, func, self.size)
 
 
 class MainWindow(QMainWindow):
@@ -148,6 +203,9 @@ class MainWindow(QMainWindow):
 
         self.camera_widget = LabelCamera(
             camera_id=1, size=(self.SIZE, self.SIZE), parent=self
+        )
+        self.camera_widget.set_process_pixmap(
+            lambda image, size: mask_image(image, size[0])
         )
 
         self.setCentralWidget(self.camera_widget)
