@@ -73,7 +73,9 @@ class SettingsPanelWidget(QWidget):
 
 
 class SettingsWindow(QWidget):
-    def __init__(self):
+    size_changed = QtCore.pyqtSignal(int)
+
+    def __init__(self, default_size):
         super().__init__()
         self.settings_panel = SettingsPanelWidget(self)
         self.layout = QVBoxLayout(self)
@@ -85,17 +87,16 @@ class SettingsWindow(QWidget):
         )
         self.available_cameras = []
 
+        self.settings_panel.ui.size_input.setValue(default_size)
+        self.settings_panel.ui.size_input.valueChanged.connect(self.change_size)
+
         self.camera.start_camera()
 
-    def change_camera(self, item_id):
-        camera_name = self.settings_panel.ui.cameras_list.currentText()
-        print(item_id, camera_name)
-        self.camera.change_camera_id(item_id)
-        # print(self.available_cameras, camera_name)
-        # try:
-        #     camera_id = self.available_cameras.index(camera_name)
-        # except:
-        #     ...
+    def change_size(self, size: int):
+        self.size_changed.emit(size)
+
+    def change_camera(self, camera_id):
+        self.camera.change_camera_id(camera_id)
 
     def update_cameras_list(self):
         self.available_cameras = self.camera.get_available_cameras()
@@ -186,12 +187,21 @@ class LabelCamera(QWidget):
         QWidget.__init__(self, parent)
         self.layout = QVBoxLayout(self)
         self.camera_label = QLabel()
-        self.size = size
+        self._size = size
+        self._process_pixmap_func = None
         self.camera = Camera(camera_id)
-        self.set_process_pixmap(None)
+
         self.resize_camera_label()
 
         self.layout.addWidget(self.camera_label)
+
+    @property
+    def size(self):
+        return self._size
+
+    @size.setter
+    def size(self, size):
+        self._size = size
 
     def get_available_cameras(self):
         return self.camera.get_available_cameras()
@@ -201,6 +211,9 @@ class LabelCamera(QWidget):
         if size is None:
             size = self.camera.get_size_or_camera_size()
         self.camera_label.resize(*size)
+
+        # for update size in Camera.sources
+        self.set_process_pixmap(self._process_pixmap_func)
 
     def change_camera_id(self, camera_id: int):
         self.camera.change_camera_id(camera_id)
@@ -213,6 +226,7 @@ class LabelCamera(QWidget):
         self.camera.stop()
 
     def set_process_pixmap(self, func):
+        self._process_pixmap_func = func
         self.camera.add_source(self.camera_label, func, self.size)
 
 
@@ -241,7 +255,14 @@ class MainWindow(QMainWindow):
         self.__init_systray()
 
     def __init_setting_window(self):
-        self.setting_window = SettingsWindow()
+        self.setting_window = SettingsWindow(self.SIZE)
+        self.setting_window.size_changed.connect(self.change_size)
+
+    def change_size(self, size):
+        print(size)
+        self.SIZE = size
+        self.camera_widget.size = (self.SIZE, self.SIZE)
+        self.camera_widget.resize_camera_label()
 
     def __init_systray(self):
         self.trayIcon = SystemTrayIcon(
@@ -261,6 +282,10 @@ class MainWindow(QMainWindow):
             self.show()
 
         self.is_camera_show = not self.is_camera_show
+
+    def closeEvent(self, a0) -> None:
+        self.setting_window.close()
+        return super().closeEvent(a0)
 
 
 if __name__ == "__main__":
