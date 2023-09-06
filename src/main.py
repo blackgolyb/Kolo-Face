@@ -80,8 +80,31 @@ class SettingsWindow(QWidget):
         self.camera = LabelCamera(camera_id=0, size=None, parent=self)
         self.layout.addWidget(self.camera)
         self.layout.addWidget(self.settings_panel)
+        self.settings_panel.ui.cameras_list.currentIndexChanged.connect(
+            self.change_camera
+        )
+        self.available_cameras = []
 
         self.camera.start_camera()
+
+    def change_camera(self, item_id):
+        camera_name = self.settings_panel.ui.cameras_list.currentText()
+        print(item_id, camera_name)
+        self.camera.change_camera_id(item_id)
+        # print(self.available_cameras, camera_name)
+        # try:
+        #     camera_id = self.available_cameras.index(camera_name)
+        # except:
+        #     ...
+
+    def update_cameras_list(self):
+        self.available_cameras = self.camera.get_available_cameras()
+        cameras_names = list(map(lambda x: x.description(), self.available_cameras))
+        self.settings_panel.ui.cameras_list.addItems(cameras_names)
+
+    def showEvent(self, a0) -> None:
+        self.update_cameras_list()
+        return super().showEvent(a0)
 
 
 class SystemTrayIcon(QSystemTrayIcon):
@@ -112,9 +135,6 @@ class Camera(metaclass=SingletonMeta):
         self.camera.setCaptureMode(QCamera.CaptureViewfinder)
         self.camera.setViewfinder(self.viewfinder)
 
-        if self.probe is not None:
-            self.probe.videoFrameProbed.disconnect(self.process_frame)
-
         self.probe = QtMultimedia.QVideoProbe(self.camera)
         self.probe.videoFrameProbed.connect(self.process_frame)
         self.probe.setSource(self.camera)
@@ -142,9 +162,12 @@ class Camera(metaclass=SingletonMeta):
         if frame.isValid():
             self.process_sources(frame)
 
+    def get_available_cameras(self):
+        return QCameraInfo.availableCameras()
+
     def change_camera_id(self, camera_id: int):
         self.camera_id = camera_id
-        self.available_cameras = QCameraInfo.availableCameras()
+        self.available_cameras = self.get_available_cameras()
         if not self.available_cameras:
             print("No camera found.")
             sys.exit()
@@ -157,12 +180,6 @@ class Camera(metaclass=SingletonMeta):
     def stop(self):
         self.camera.stop()
 
-    def __del__(self):
-        if self.probe.isActive():
-            self.probe.videoFrameProbed.disconnect(self.process_frame)
-            self.probe.deleteLater()
-        self.camera.stop()
-
 
 class LabelCamera(QWidget):
     def __init__(self, camera_id=0, size=(100, 100), parent=None):
@@ -172,17 +189,22 @@ class LabelCamera(QWidget):
         self.size = size
         self.camera = Camera(camera_id)
         self.set_process_pixmap(None)
-        # self.__init_camera()
         self.resize_camera_label()
 
         self.layout.addWidget(self.camera_label)
-        # self.start_camera()
+
+    def get_available_cameras(self):
+        return self.camera.get_available_cameras()
 
     def resize_camera_label(self):
         size = self.size
         if size is None:
             size = self.camera.get_size_or_camera_size()
         self.camera_label.resize(*size)
+
+    def change_camera_id(self, camera_id: int):
+        self.camera.change_camera_id(camera_id)
+        self.start_camera()
 
     def start_camera(self):
         self.camera.start()
@@ -202,7 +224,7 @@ class MainWindow(QMainWindow):
         self.resize(self.SIZE, self.SIZE)
 
         self.camera_widget = LabelCamera(
-            camera_id=1, size=(self.SIZE, self.SIZE), parent=self
+            camera_id=0, size=(self.SIZE, self.SIZE), parent=self
         )
         self.camera_widget.set_process_pixmap(
             lambda image, size: mask_image(image, size[0])
