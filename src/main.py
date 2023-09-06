@@ -7,6 +7,7 @@ from PyQt5.QtMultimedia import *
 from PyQt5.QtMultimediaWidgets import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtWidgets import QWidget
+import configparser
 
 import config
 from services.singleton import SingletonMeta
@@ -65,6 +66,35 @@ def mask_image(image, size=64):
     return pm
 
 
+class Config(metaclass=SingletonMeta):
+    # class Config(object):
+    def __init__(self, config_file=config.CONFIG_FILE):
+        self.config_file = config_file
+        self.camera_id = 0
+        self.size = 300
+
+        self.config = configparser.ConfigParser()
+        self.put_data_to_config(self.size, self.camera_id)
+
+    def put_data_to_config(self, size, camera_id):
+        self.config["DEFAULT"] = {
+            "camera_id": camera_id,
+            "size": size,
+        }
+
+    def upload(self, size, camera_id):
+        self.put_data_to_config(size, camera_id)
+
+        with self.config_file.open("w") as configfile:
+            self.config.write(configfile)
+
+    def load(self):
+        # try:
+        self.config.read(self.config_file)
+        self.camera_id = int(self.config["DEFAULT"]["camera_id"])
+        self.size = int(self.config["DEFAULT"]["size"])
+
+
 class SettingsPanelWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
@@ -75,11 +105,12 @@ class SettingsPanelWidget(QWidget):
 class SettingsWindow(QWidget):
     size_changed = QtCore.pyqtSignal(int)
 
-    def __init__(self, default_size):
+    def __init__(self, default_size, default_camera_id):
         super().__init__()
+        self.config = Config()
         self.settings_panel = SettingsPanelWidget(self)
         self.layout = QVBoxLayout(self)
-        self.camera = LabelCamera(camera_id=0, size=None, parent=self)
+        self.camera = LabelCamera(camera_id=default_camera_id, size=None, parent=self)
         self.layout.addWidget(self.camera)
         self.layout.addWidget(self.settings_panel)
         self.settings_panel.ui.cameras_list.currentIndexChanged.connect(
@@ -89,13 +120,21 @@ class SettingsWindow(QWidget):
 
         self.settings_panel.ui.size_input.setValue(default_size)
         self.settings_panel.ui.size_input.valueChanged.connect(self.change_size)
+        self.settings_panel.ui.save_button.clicked.connect(self.save_config)
 
         self.camera.start_camera()
 
     def change_size(self, size: int):
         self.size_changed.emit(size)
 
+    def save_config(self):
+        self.config.upload(
+            size=self.settings_panel.ui.size_input.value(),
+            camera_id=self.camera_id,
+        )
+
     def change_camera(self, camera_id):
+        self.camera_id = camera_id
         self.camera.change_camera_id(camera_id)
 
     def update_cameras_list(self):
@@ -234,11 +273,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         # Window size
-        self.SIZE = 300
+        self.config = Config()
+        self.config.load()
+
+        self.SIZE = self.config.size
+        self.camera_id = self.config.camera_id
+
         self.resize(self.SIZE, self.SIZE)
 
         self.camera_widget = LabelCamera(
-            camera_id=0, size=(self.SIZE, self.SIZE), parent=self
+            camera_id=self.camera_id, size=(self.SIZE, self.SIZE), parent=self
         )
         self.camera_widget.set_process_pixmap(
             lambda image, size: mask_image(image, size[0])
@@ -255,7 +299,7 @@ class MainWindow(QMainWindow):
         self.__init_systray()
 
     def __init_setting_window(self):
-        self.setting_window = SettingsWindow(self.SIZE)
+        self.setting_window = SettingsWindow(self.SIZE, self.camera_id)
         self.setting_window.size_changed.connect(self.change_size)
 
     def change_size(self, size):

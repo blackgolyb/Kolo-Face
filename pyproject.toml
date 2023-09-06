@@ -14,6 +14,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.11"
 pyqt5 = "^5.15.9"
+platformdirs = "^3.10.0"
 
 [tool.poetry.scripts]
 convert-ui = "scripts.convert_ui:convert_ui_file_to_python"
