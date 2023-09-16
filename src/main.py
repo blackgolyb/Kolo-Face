@@ -37,28 +37,34 @@ def vector_projection(base_vector, projecting_vector):
     return projection
 
 
-def mask_image(image, size=64):
+def mask_image(image, size, rect):
     # Load image
     # image = QImage.fromData(imgdata, imgtype)
 
     # convert image to 32-bit ARGB (adds an alpha
     # channel ie transparency factor):
-    image.convertToFormat(QImage.Format_ARGB32)
+    # image.convertToFormat(QImage.Format_ARGB32)
 
-    # Crop image to a square:
-    imgsize = min(image.width(), image.height())
+    # # Crop image to a square:
+    # imgsize = min(image.width(), image.height())
+    # rect = QRect(
+    #     (image.width() - imgsize) // 2,
+    #     (image.height() - imgsize) // 2,
+    #     imgsize,
+    #     imgsize,
+    # )
     rect = QRect(
-        (image.width() - imgsize) // 2,
-        (image.height() - imgsize) // 2,
-        imgsize,
-        imgsize,
+        int(rect.x()),
+        int(rect.y()),
+        int(rect.width()),
+        int(rect.height()),
     )
 
     image = image.copy(rect)
 
     # Create the output image with the same dimensions
     # and an alpha channel and make it completely transparent:
-    out_img = QImage(imgsize, imgsize, QImage.Format_ARGB32)
+    out_img = QImage(rect.width(), rect.height(), QImage.Format_ARGB32)
     out_img.fill(Qt.transparent)
 
     # Create a texture brush and paint a circle
@@ -73,7 +79,7 @@ def mask_image(image, size=64):
     painter.setPen(Qt.NoPen)
 
     # drawing circle
-    painter.drawEllipse(0, 0, imgsize, imgsize)
+    painter.drawEllipse(0, 0, rect.width(), rect.height())
 
     # closing painter event
     painter.end()
@@ -540,6 +546,9 @@ class SettingsWindow(QWidget):
 
         self.camera.start_camera()
 
+    def get_camera_resize_rect(self):
+        return self.camera_resize_item.boundingRect()
+
     def change_size(self, size: int):
         self.size_changed.emit(size)
 
@@ -732,9 +741,7 @@ class MainWindow(QMainWindow):
         self.camera_widget = CameraSource(
             camera_id=self.camera_id, size=(self.SIZE, self.SIZE), parent=self
         )
-        self.camera_widget.set_process_pixmap(
-            lambda image, size: mask_image(image, size[0])
-        )
+        self.camera_widget.set_process_pixmap(self.circle_image)
 
         self.setCentralWidget(self.camera_widget)
         self.setWindowFlag(Qt.FramelessWindowHint)
@@ -749,6 +756,10 @@ class MainWindow(QMainWindow):
     def __init_setting_window(self):
         self.setting_window = SettingsWindow(self.SIZE, self.camera_id)
         self.setting_window.size_changed.connect(self.change_size)
+
+    def circle_image(self, image, size):
+        rect = self.setting_window.get_camera_resize_rect()
+        return mask_image(image, size[0], rect)
 
     def change_size(self, size):
         self.SIZE = size
