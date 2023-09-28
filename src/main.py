@@ -2,7 +2,7 @@ import sys
 import typing
 import numpy as np
 
-from PyQt5 import QtCore, QtMultimedia, QtGui
+from PyQt5 import QtCore, QtMultimedia, QtGui, QtWidgets
 from PyQt5.Qt import (
     Qt,
     QImage,
@@ -729,7 +729,7 @@ class CameraSource(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        # Window size
+
         self.config = Config()
         self.config.load()
 
@@ -752,6 +752,27 @@ class MainWindow(QMainWindow):
 
         self.__init_setting_window()
         self.__init_systray()
+
+        self.startPos = None
+        QtWidgets.QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if (
+            event.type() == QtCore.QEvent.MouseButtonPress
+            and event.button() == QtCore.Qt.LeftButton
+        ):
+            self.startPos = event.pos()
+            return True
+        elif event.type() == QtCore.QEvent.MouseMove and self.startPos is not None:
+            self.move(self.pos() + event.pos() - self.startPos)
+            return True
+        elif (
+            event.type() == QtCore.QEvent.MouseButtonRelease
+            and self.startPos is not None
+        ):
+            self.startPos = None
+            return True
+        return super(MainWindow, self).eventFilter(source, event)
 
     def __init_setting_window(self):
         self.setting_window = SettingsWindow(self.SIZE, self.camera_id)
